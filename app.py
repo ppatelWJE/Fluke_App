@@ -8,6 +8,7 @@
 import io
 from datetime import datetime, timedelta
 import re
+from turtle import width
 from typing import List, Optional, Tuple, Dict, Union
 import pandas as pd
 import numpy as np
@@ -16,7 +17,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import streamlit as st
 
-st.set_page_config(page_title="Trend Plotter (Utility Log)", layout="wide")
+st.set_page_config(page_title="Fluke Recordings", layout="wide")
 st.title("Fluke Recordings Plotter and Exporter")
 
 # ---------------------------
@@ -233,7 +234,7 @@ def compute_letter_export_size(n_rows: int, dpi: int = 300) -> Tuple[int, int]:
 with st.sidebar:
     st.header("Upload")
     uploaded = st.file_uploader(
-        "Upload utility trend file (.txt or .csv)",
+        "Upload Fluke exported trend file (.txt or .csv) \nMake sure exported file uses COMMA as delimiter",
         type=["txt", "csv"],
         help="Comma-delimited file with header row (e.g., Start/Stop timestamps and metrics).",
     )
@@ -251,168 +252,174 @@ if df.empty:
     st.error("No data found after parsing. Check delimiter and header row.")
     st.stop()
 
+#Header title
+st.header("Plotting")
+
 # ---------------------------
 # X-axis selection (MAIN screen)
 # ---------------------------
-st.subheader("Set X‑axis")
-x_mode = st.radio(
-    "Choose X‑axis",
-    ["Start(Eastern Standard Time)", "Elapsed seconds (0,1,2,…)"]
-    , index=0,
-    help="Use actual timestamps, or a synthetic 1-second tick starting at 0.",
-)
+with st.expander("Set X-axis", expanded=False):
+    x_mode = st.radio(
+        "Choose X‑axis",
+        ["Start(Eastern Standard Time)", "Elapsed seconds (0,1,2,…)"]
+        , index=0,
+        help="Use actual timestamps, or a synthetic 1-second tick starting at 0.",
+    )
 
-if x_mode.startswith("Elapsed"):
-    if START_COL in df.columns:
-        df = df.sort_values(by=START_COL).reset_index(drop=True)
-    df["Elapsed_s"] = range(len(df))
-    x_col = "Elapsed_s"
-    x_is_time = False
-else:
-    x_col = START_COL if START_COL in df.columns else df.columns[0]
-    x_is_time = pd.api.types.is_datetime64_any_dtype(df[x_col])
-    if not x_is_time:
-        st.warning(
-            f"Selected timestamp X-axis requires '{x_col}' to be datetime. Switch to 'Elapsed seconds' if needed."
-        )
+    if x_mode.startswith("Elapsed"):
+        if START_COL in df.columns:
+            df = df.sort_values(by=START_COL).reset_index(drop=True)
+        df["Elapsed_s"] = range(len(df))
+        x_col = "Elapsed_s"
+        x_is_time = False
+    else:
+        x_col = START_COL if START_COL in df.columns else df.columns[0]
+        x_is_time = pd.api.types.is_datetime64_any_dtype(df[x_col])
+        if not x_is_time:
+            st.warning(
+                f"Selected timestamp X-axis requires '{x_col}' to be datetime. Switch to 'Elapsed seconds' if needed."
+            )
 
 # ---------------------------
 # Series selection (on-screen chart)
 # ---------------------------
-st.subheader("Series Selection")
-numeric_cols = df.select_dtypes(include="number").columns.tolist()
-y_candidates = [c for c in numeric_cols if c != x_col]
+with st.expander("Series Selection", expanded=True):
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    y_candidates = [c for c in numeric_cols if c != x_col]
 
-# Default selection: PowerP_Total_avg if present, else first available numeric
-_default_pref = ["PowerP_Total_avg"]
-_default_ys = [c for c in _default_pref if c in y_candidates] or (y_candidates[:1] if y_candidates else [])
+    # Default selection: PowerP_Total_avg if present, else first available numeric
+    _default_pref = ["PowerP_Total_avg"]
+    _default_ys = [c for c in _default_pref if c in y_candidates] or (y_candidates[:1] if y_candidates else [])
 
-# Keep selection in session state so group buttons can override it
-if "y_sel" not in st.session_state:
-    st.session_state["y_sel"] = _default_ys
+    # Keep selection in session state so group buttons can override it
+    if "y_sel" not in st.session_state:
+        st.session_state["y_sel"] = _default_ys
 
-# Group buttons (Voltage, Current, Total Power)
-cgb1, cgb2, cgb3, _ = st.columns([1.1, 1.1, 1.2, 2])
-with cgb1:
-    if st.button("Group: Voltage (Vab, Vca, Vbc)"):
-        target = [s for s in ["Vrms_AB_avg", "Vrms_CA_avg", "Vrms_BC_avg"] if s in y_candidates]
-        st.session_state["y_sel"] = target or st.session_state["y_sel"]
-        st.rerun()
-with cgb2:
-    if st.button("Group: Current (Ia, Ib, Ic)"):
-        target = [s for s in ["Irms_A_avg", "Irms_B_avg", "Irms_C_avg"] if s in y_candidates]
-        st.session_state["y_sel"] = target or st.session_state["y_sel"]
-        st.rerun()
-with cgb3:
-    if st.button("Group: Total Power (P_total)"):
-        target = [s for s in ["PowerP_Total_avg"] if s in y_candidates]
-        st.session_state["y_sel"] = target or st.session_state["y_sel"]
-        st.rerun()
+    # Group buttons (Voltage, Current, Total Power)
+    cgb1, cgb2, cgb3, _ = st.columns([1.1, 1.1, 1.2, 2])
+    with cgb1:
+        if st.button("Group: Voltage (Vab, Vca, Vbc)"):
+            target = [s for s in ["Vrms_AB_avg", "Vrms_CA_avg", "Vrms_BC_avg"] if s in y_candidates]
+            st.session_state["y_sel"] = target or st.session_state["y_sel"]
+            st.rerun()
+    with cgb2:
+        if st.button("Group: Current (Ia, Ib, Ic)"):
+            target = [s for s in ["Irms_A_avg", "Irms_B_avg", "Irms_C_avg"] if s in y_candidates]
+            st.session_state["y_sel"] = target or st.session_state["y_sel"]
+            st.rerun()
+    with cgb3:
+        if st.button("Group: Total Power (P_total)"):
+            target = [s for s in ["PowerP_Total_avg"] if s in y_candidates]
+            st.session_state["y_sel"] = target or st.session_state["y_sel"]
+            st.rerun()
 
-# Multiselect bound to state
-y_cols = st.multiselect(
-    "Y series (one or more)",
-    options=y_candidates,
-    default=st.session_state["y_sel"],
-    key="y_sel"
-)
+    # Multiselect bound to state
+    y_cols = st.multiselect(
+        "Y series (one or more)",
+        options=y_candidates,
+        default=st.session_state["y_sel"],
+        key="y_sel"
+    )
 
-if not y_cols:
-    st.warning("Select at least one numeric Y series.")
-    st.stop()
+    if not y_cols:
+        st.warning("Select at least one numeric Y series.")
+        st.stop()
 
 # ---------------------------
 # Range controls
 # ---------------------------
-st.subheader("Range Selection")
-if x_is_time:
-    xmin_pd = pd.to_datetime(df[x_col].min(), errors="coerce")
-    xmax_pd = pd.to_datetime(df[x_col].max(), errors="coerce")
-    if pd.isna(xmin_pd) or pd.isna(xmax_pd):
-        st.error("No valid timestamps in the selected X column.")
-        st.stop()
-    xmin = to_pydt(xmin_pd); xmax = to_pydt(xmax_pd)
-    if "ts_range" not in st.session_state:
-        st.session_state.ts_range = (xmin, xmax)
-    s0, e0 = st.session_state.ts_range
-    s0 = to_pydt(s0) if s0 else xmin
-    e0 = to_pydt(e0) if e0 else xmax
-    s0 = clamp_dt(s0, xmin, xmax); e0 = clamp_dt(e0, xmin, xmax)
-    if s0 > e0: s0, e0 = e0, s0
-    st.session_state.ts_range = (s0, e0)
+with st.expander("Range Selection", expanded=False):
+    if x_is_time:
+        xmin_pd = pd.to_datetime(df[x_col].min(), errors="coerce")
+        xmax_pd = pd.to_datetime(df[x_col].max(), errors="coerce")
+        if pd.isna(xmin_pd) or pd.isna(xmax_pd):
+            st.error("No valid timestamps in the selected X column.")
+            st.stop()
+        xmin = to_pydt(xmin_pd); xmax = to_pydt(xmax_pd)
+        if "ts_range" not in st.session_state:
+            st.session_state.ts_range = (xmin, xmax)
+        s0, e0 = st.session_state.ts_range
+        s0 = to_pydt(s0) if s0 else xmin
+        e0 = to_pydt(e0) if e0 else xmax
+        s0 = clamp_dt(s0, xmin, xmax); e0 = clamp_dt(e0, xmin, xmax)
+        if s0 > e0: s0, e0 = e0, s0
+        st.session_state.ts_range = (s0, e0)
 
-    c1, c2, c3 = st.columns([1.2, 1.2, 0.7])
-    with c1:
-        ts_start_str = st.text_input("Start timestamp", value=s0.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
-                                     help="Example: 2025-10-17 11:55:00.000")
-    with c2:
-        ts_end_str = st.text_input("End timestamp", value=e0.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
-                                   help="Example: 2025-10-17 11:56:00.000")
-    with c3:
-        if st.button("Apply typed range"):
-            new_s = pd.to_datetime(ts_start_str, errors="coerce")
-            new_e = pd.to_datetime(ts_end_str, errors="coerce")
-            if pd.isna(new_s) or pd.isna(new_e):
-                st.warning("Could not parse the typed timestamps.")
-            else:
-                ns = to_pydt(new_s); ne = to_pydt(new_e)
-                ns = clamp_dt(ns, xmin, xmax); ne = clamp_dt(ne, xmin, xmax)
-                if ns > ne: ns, ne = ne, ns
-                st.session_state.ts_range = (ns, ne)
+        c1, c2, c3 = st.columns([1.2, 1.2, 0.7])
+        with c1:
+            ts_start_str = st.text_input("Start timestamp", value=s0.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                                        help="Example: 2025-10-17 11:55:00.000")
+        with c2:
+            ts_end_str = st.text_input("End timestamp", value=e0.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                                    help="Example: 2025-10-17 11:56:00.000")
+        with c3:
+            if st.button("Apply typed range"):
+                new_s = pd.to_datetime(ts_start_str, errors="coerce")
+                new_e = pd.to_datetime(ts_end_str, errors="coerce")
+                if pd.isna(new_s) or pd.isna(new_e):
+                    st.warning("Could not parse the typed timestamps.")
+                else:
+                    ns = to_pydt(new_s); ne = to_pydt(new_e)
+                    ns = clamp_dt(ns, xmin, xmax); ne = clamp_dt(ne, xmin, xmax)
+                    if ns > ne: ns, ne = ne, ns
+                    st.session_state.ts_range = (ns, ne)
+                    st.rerun()
+
+        slider_val = st.slider("Drag to set range (timestamps)", min_value=xmin, max_value=xmax,
+                            value=st.session_state.ts_range, step=timedelta(seconds=1),
+                            help="This range drives the plot and exports.")
+        start_bound, end_bound = slider_val
+    else:
+        xmin = int(df[x_col].min()); xmax = int(df[x_col].max())
+        if "num_range" not in st.session_state:
+            st.session_state.num_range = (xmin, xmax)
+        n0, n1 = st.session_state.num_range
+        if n0 > n1: n0, n1 = n1, n0
+        c1, c2, c3 = st.columns([1, 1, 0.7])
+        with c1:
+            n_start = st.number_input("Start (sec)", value=int(n0), step=1)
+        with c2:
+            n_end = st.number_input("End (sec)", value=int(n1), step=1)
+        with c3:
+            if st.button("Apply typed range"):
+                s = int(n_start); e = int(n_end)
+                if s > e: s, e = e, s
+                st.session_state.num_range = (s, e)
                 st.rerun()
 
-    slider_val = st.slider("Drag to set range (timestamps)", min_value=xmin, max_value=xmax,
-                           value=st.session_state.ts_range, step=timedelta(seconds=1),
-                           help="This range drives the plot and exports.")
-    start_bound, end_bound = slider_val
-else:
-    xmin = int(df[x_col].min()); xmax = int(df[x_col].max())
-    if "num_range" not in st.session_state:
-        st.session_state.num_range = (xmin, xmax)
-    n0, n1 = st.session_state.num_range
-    if n0 > n1: n0, n1 = n1, n0
-    c1, c2, c3 = st.columns([1, 1, 0.7])
-    with c1:
-        n_start = st.number_input("Start (sec)", value=int(n0), step=1)
-    with c2:
-        n_end = st.number_input("End (sec)", value=int(n1), step=1)
-    with c3:
-        if st.button("Apply typed range"):
-            s = int(n_start); e = int(n_end)
-            if s > e: s, e = e, s
-            st.session_state.num_range = (s, e)
-            st.rerun()
-
-    slider_val = st.slider("Drag to set range (seconds)", min_value=xmin, max_value=xmax,
-                           value=st.session_state.num_range, step=1,
-                           help="This range drives the plot and exports.")
-    start_bound, end_bound = slider_val
+        slider_val = st.slider("Drag to set range (seconds)", min_value=xmin, max_value=xmax,
+                            value=st.session_state.num_range, step=1,
+                            help="This range drives the plot and exports.")
+        start_bound, end_bound = slider_val
 
 # ---------------------------
-# On-screen chart
+# Color Selection
 # ---------------------------
-st.subheader("Colors Selection")
-if "series_colors" not in st.session_state:
-    st.session_state.series_colors = {}
+with st.expander("Colors Selection", expanded=False):
+    if "series_colors" not in st.session_state:
+        st.session_state.series_colors = {}
 
-palette_iter = iter(DEFAULT_PALETTE)
-color_map = {}
-cols = st.columns(min(4, max(1, len(y_cols))))
-for i, y in enumerate(y_cols):
-    default_color = st.session_state.series_colors.get(y)
-    if not default_color:
-        try:
-            default_color = next(palette_iter)
-        except StopIteration:
-            default_color = "#1f77b4"
-    with cols[i % len(cols)]:
-        picked = st.color_picker(f"{y}", value=default_color)
-        final = ensure_hex(picked) or default_color
-        st.session_state.series_colors[y] = final
-        color_map[y] = final
+    palette_iter = iter(DEFAULT_PALETTE)
+    color_map = {}
+    cols = st.columns(min(4, max(1, len(y_cols))))
+    for i, y in enumerate(y_cols):
+        default_color = st.session_state.series_colors.get(y)
+        if not default_color:
+            try:
+                default_color = next(palette_iter)
+            except StopIteration:
+                default_color = "#1f77b4"
+        with cols[i % len(cols)]:
+            picked = st.color_picker(f"{y}", value=default_color)
+            final = ensure_hex(picked) or default_color
+            st.session_state.series_colors[y] = final
+            color_map[y] = final
 
-with st.expander("Chart options", expanded=False):
-    title = st.text_input("Title", value="Utility Trend (Multi‑line)")
+# ---------------------------
+# Chart Options Selection
+# ---------------------------
+with st.expander("Chart Options", expanded=False):
+    title = st.text_input("Title", value="Fluke Recording Data")
     x_title = st.text_input("X‑axis label", value=x_col)
     y_title = st.text_input("Y‑axis label", value="Value")
 
@@ -446,7 +453,7 @@ st.plotly_chart(fig, use_container_width=True)
 st.subheader("Exporting")
 
 # New: explicit text size controls for exports
-with st.expander("Export text sizes (applies to all exports)", expanded=True):
+with st.expander("Export text sizes (applies to all exports)", expanded=False):
     c1, c2, c3 = st.columns([1,1,1])
     c4, c5 = st.columns([1,1])
     title_size = c1.number_input("Title (pt)", min_value=8, max_value=120, value=50, step=1)
