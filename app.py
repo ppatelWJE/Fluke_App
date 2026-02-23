@@ -8,10 +8,8 @@
 import io
 from datetime import datetime, timedelta
 import re
-from turtle import width
 from typing import List, Optional, Tuple, Dict, Union
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
