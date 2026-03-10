@@ -8,6 +8,6 @@ To Do List
 - [ ] Remove all the sliders excpet for the time one 
 - [ ] All typed inputs and sliders should auto update values once changed. 
 - [ ] Do not reset voltage, current, and power bounds when time shifts. 
-- [ ] update power plots to be in kW
+- [ ] Update power plots to be in kW.
 - [ ] Input Motor HP rating or KW rating. The plotted value should always be in kW.
-
+- [ ] (optional) Vertical lines to indicate opening and  closing cycle?

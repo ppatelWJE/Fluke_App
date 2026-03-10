@@ -246,6 +246,14 @@ if uploaded is None:
     st.stop()
 
 df = load_log(uploaded.getvalue())
+# Ensure Power Factor series are positive: apply abs() to all columns containing 'PfCapInd'
+pf_cols = [c for c in df.columns if 'PfCapInd' in c]
+for c in pf_cols:
+    try:
+        if pd.api.types.is_numeric_dtype(df[c]):
+            df[c] = df[c].abs()
+    except Exception:
+        pass
 if df.empty:
     st.error("No data found after parsing. Check delimiter and header row.")
     st.stop()
