@@ -114,7 +114,7 @@ def make_stacked_figure(
     ref_color: str = "red",
     ref_dash: str = "dash",
     # Export styling sizes
-    title_size: int = 50,            # defaults will be overridden by UI inputs
+    title_size: int = 50,
     base_font_size: int = 18,
     axis_title_size: int = 28,
     tick_font_size: int = 18,
@@ -126,9 +126,11 @@ def make_stacked_figure(
     """Build stacked figure with export-friendly styling and optional per-series Y labels."""
     rows = len(y_series)
     subtitles = y_titles if (y_titles and len(y_titles) == rows) else y_series
+
+    # ALWAYS show subplot titles, even for a single row
     fig = make_subplots(
         rows=rows, cols=1, shared_xaxes=True, vertical_spacing=0.06,
-        subplot_titles=subtitles if rows > 1 else None,
+        subplot_titles=subtitles
     )
 
     for i, y in enumerate(y_series, start=1):
@@ -139,12 +141,14 @@ def make_stacked_figure(
                 mode="lines",
                 name=y,
                 line=dict(width=2, color=line_color),
-                showlegend=False if ref_value is not None else (rows == 1),
+                # Never show the series in legend; legend is reserved for reference line only
+                showlegend=False,
                 hovertemplate=f"<b>{subtitles[i-1]}</b><br>Time (sec): %{{x}}<br>{y}: %{{y}}<extra></extra>",
-            ), row=i, col=1
+            ),
+            row=i, col=1
         )
 
-        # Determine bounds for this series
+        # Bounds for this series
         bounds = None
         if y_bounds_per_series and y in y_bounds_per_series:
             bounds = y_bounds_per_series[y]
@@ -160,20 +164,26 @@ def make_stacked_figure(
 
         if label_for_row is not None:
             fig.update_yaxes(title_text=label_for_row, row=i, col=1)
+
         if bounds is not None:
             ymin, ymax = bounds
             if ymin == ymax:
                 pad = max(1.0, abs(ymin) * 0.01)
                 ymin, ymax = ymin - pad, ymax + pad
             fig.update_yaxes(range=[ymin, ymax], row=i, col=1)
+
         fig.update_xaxes(showticklabels=True, title_text="Time (sec)", row=i, col=1)
 
-        # Reference line per subplot
+        # Reference line per subplot (if any)
         if ref_value is not None:
             if (ref_series_only is None) or (y in (ref_series_only or [])):
-                fig.add_hline(y=float(ref_value), line_dash=ref_dash, line_color=ref_color, line_width=2, row=i, col=1)
+                fig.add_hline(
+                    y=float(ref_value),
+                    line_dash=ref_dash, line_color=ref_color, line_width=2,
+                    row=i, col=1
+                )
 
-    # Legend entry for reference line using a trace that is legend-only
+    # If reference exists and has a label, add a legend-only entry so the legend shows only this item
     if ref_value is not None and ref_label:
         if len(x_sec) >= 2:
             x0, x1 = x_sec.iloc[0], x_sec.iloc[-1]
@@ -183,8 +193,10 @@ def make_stacked_figure(
             go.Scatter(
                 x=[x0, x1], y=[ref_value, ref_value], mode="lines",
                 line=dict(color=ref_color, dash=ref_dash, width=2),
-                name=ref_label, hoverinfo="skip", showlegend=True, visible='legendonly',
-            ), row=1, col=1
+                name=ref_label, hoverinfo="skip",
+                showlegend=True, visible='legendonly',
+            ),
+            row=1, col=1
         )
 
     GRID_COLOR = "#B5B5B5"
@@ -194,13 +206,15 @@ def make_stacked_figure(
         paper_bgcolor="white", plot_bgcolor="white",
         title=dict(text=global_title, x=0.5, xanchor="center", font=dict(size=title_size, color="black")),
         template="plotly_white",
-        showlegend=True if (ref_value is not None and ref_label) else (False if rows > 1 else True),
+        # Show legend ONLY if a reference with label is present
+        showlegend=True if (ref_value is not None and ref_label) else False,
         legend=dict(
             orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0,
             font=dict(color="black", size=legend_font_size),
             bgcolor="white", bordercolor="black", borderwidth=1
         ),
-        margin=dict(l=10, r=10, t=180, b=10), height=max(380, 300 * rows),
+        margin=dict(l=10, r=10, t=180, b=10),
+        height=max(380, 300 * rows),
     )
 
     # Subplot title font to requested size
@@ -218,7 +232,7 @@ def make_stacked_figure(
         tickfont=dict(color="black", size=tick_font_size), title_font=dict(size=axis_title_size, color="black"),
     ))
 
-    # Subplot borders
+    # Optional subplot borders
     if add_subplot_borders:
         try:
             xdom = fig.layout.xaxis.domain
@@ -232,7 +246,7 @@ def make_stacked_figure(
                 x0=xdom[0], x1=xdom[1], y0=ydom[0], y1=ydom[1],
                 line=dict(color="black", width=1), fillcolor="rgba(0,0,0,0)", layer="above"
             )
-
+            
     return fig
 
 
@@ -845,6 +859,7 @@ with st.expander("Power", expanded=False):
                     y_bounds_per_series=y_bounds_overrides,
                     y_label_per_series=y_labels_overrides,
                     line_color="black",
+                    y_titles=pwr_y_titles,
                     ref_value=rated_kw, ref_label=("Rated Power" if rated_kw is not None else None),
                     ref_series_only=["PowerP_Total_avg"],
                     title_size=title_size, base_font_size=max(10, int(0.36*axis_title_size + tick_font_size*0.2)),
